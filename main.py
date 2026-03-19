@@ -207,7 +207,12 @@ class KubernetesMisconfigurationAuditor:
             self.table.add_column(column)
 
         for finding in self.findings:
-            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
+            if finding.severity == 'critical':
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="red")
+            elif finding.severity == 'high':
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="dark_orange")
+            else:
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
 
         console.print(self.table)
 
@@ -224,6 +229,7 @@ def main(
     namespace: Annotated[str, typer.Option(help="Namespace to print (Default: all non-system namespaces) | `all` to print all namespaces")] = "",
     severity: Annotated[str, typer.Option(help="Severity level to filter (Default: no filtering)")] = "",
     sort: Annotated[str, typer.Option(help="Column to sort alphabetically, `severity` column is sorted by severity (Default: namespace)")] = "",
+    # Todo: add option for --format json to print output as json instead of table - this would mean that the rendering login must be happening inside the render report, or as a separate function decide what to do, and each work will do child functions.
     ):
 
     # --- Load Kubeconfig ---
@@ -243,7 +249,6 @@ def main(
     except ValueError as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
-    console.print(misconf_auditor.findings)
 
 # --- Run only as script ---
 if __name__ == "__main__":

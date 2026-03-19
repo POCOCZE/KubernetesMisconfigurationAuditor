@@ -34,3 +34,6 @@ coverage.xml
 
 # Operating system
 .DS_Store
+
+# VScode
+.vscode/
