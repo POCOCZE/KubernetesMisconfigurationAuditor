@@ -3,8 +3,10 @@ import typer
 from pick import pick
 import sys
 import logging
+import json
+from datetime import datetime
 from kubernetes import client, config
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from rich.console import Console
 from rich.table import Table
 
@@ -15,6 +17,7 @@ TABLE_NAME_OVERRIDE = "Kubernetes Cluster Misconfiguration Auditor"
 
 @dataclass
 class Findings:
+    # Todo: add time here to print nice JSON format
     namespace: str
     name: str
     container: str
@@ -76,24 +79,32 @@ class KubernetesMisconfigurationAuditor:
         namespace = pod.metadata.namespace
 
         for container in pod.spec.containers:
-            self.check_resources(namespace, name, container)
-            self.check_security_context(namespace, name, container)
-            self.check_probes(namespace, name, container)
-            self.check_image_tag(namespace, name, container)
+            container_report = []
+            container_report.append(self.check_resources(container))
 
-    def check_resources(self, namespace, name, container):
+            container_report.append(self.check_security_context(container))
+            container_report.append(self.check_probes(container))
+            container_report.append(self.check_image_tag(container))
+
+            for report in container_report:
+                if report:
+                    self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue=report['issue'], severity=report['severity']))
+                else:
+                    continue
+
+    def check_resources(self, container):
         """Checks container for resources"""
         requests = container.resources.requests
         limits = container.resources.limits
 
         if not requests and not limits:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="no resources defined", severity="high"))
+            return {"issue": "no resources defined", "severity": "high"}
         elif not requests:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="requests undefined", severity="medium"))
+            return {"issue": "requests undefined", "severity": "medium"}
         elif not limits:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="limits undefined", severity="low"))
+            return {"issue": "limits undefined", "severity": "low"}
 
-    def check_security_context(self, namespace, name, container):
+    def check_security_context(self, container):
         """Checks for security context and whther container is running as root"""
         security_context = container.security_context
         # Will be overwritten, assumin worst case scenario
@@ -102,27 +113,27 @@ class KubernetesMisconfigurationAuditor:
         if security_context:
             run_as_non_root = security_context.run_as_non_root
         if security_context is None or not run_as_non_root:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="container runs as root", severity="critical"))
+            return {"issue": "container runs as root", "severity": "critical"}
 
-    def check_probes(self, namespace, name, container):
+    def check_probes(self, container):
         """Checks for liveness and readiness probes"""
         if not container.liveness_probe and not container.readiness_probe:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="readiness and liveness probes undefined", severity="medium"))
+            return {"issue": "probes undefined", "severity": "medium"}
         elif not container.readiness_probe:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="readiness probe undefined", severity="medium"))
+            return {"issue": "readiness probe undefined", "severity": "medium"}
         elif not container.liveness_probe:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="liveness probe undefined", severity="medium"))
+            return {"issue": "linebess probe undefined", "severity": "medium"}
 
-    def check_image_tag(self, namespace, name, container):
+    def check_image_tag(self, container):
         """Search for `latest` image tag"""
         # Image name format: registry.exaple.com:5000/myapp:v1.2
         image_name_split = container.image.split(":")
 
         # Image does not have to explicitely have tag - image: nginx
         if len(image_name_split) == 1:
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="no image tag (default to latest)", severity="high"))
+            return {"issue": "no image tag (default: latest)", "severity": "high"}
         elif image_name_split[-1] == 'latest':
-            self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue="latest image tag", severity="high"))
+            return {"issue": "latest image tag", "severity": "high"}
 
     def namespace_selector(self, v1, namespace):
         """
@@ -193,9 +204,13 @@ class KubernetesMisconfigurationAuditor:
 
         self.findings = sorted_findings
 
-    def render_report(self):
+    def render_report(self, format):
         if not self.findings:
             raise ValueError("Table is empty.")
+
+        if format.lower() == 'json':
+            self.render_json_report()
+            return
 
         self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
 
@@ -216,6 +231,13 @@ class KubernetesMisconfigurationAuditor:
 
         console.print(self.table)
 
+    def render_json_report(self):
+        # Todo: add timestamp to each finding before printing JSON - this will be JSON only.
+        time = datetime.now().isoformat()
+        for finding in self.findings:
+            json_output = json.dumps(asdict(finding))
+            console.print(json_output)
+
 # --- Create instances ---
 console = Console()
 logger = logging.getLogger(__name__)
@@ -229,7 +251,8 @@ def main(
     namespace: Annotated[str, typer.Option(help="Namespace to print (Default: all non-system namespaces) | `all` to print all namespaces")] = "",
     severity: Annotated[str, typer.Option(help="Severity level to filter (Default: no filtering)")] = "",
     sort: Annotated[str, typer.Option(help="Column to sort alphabetically, `severity` column is sorted by severity (Default: namespace)")] = "",
-    # Todo: add option for --format json to print output as json instead of table - this would mean that the rendering login must be happening inside the render report, or as a separate function decide what to do, and each work will do child functions.
+    format: Annotated[str, typer.Option(help="Change output style to JSON (Default: table)")] = ""
+    # Todo: add option for --format json to print output as json instead of table - this would mean that the rendering logic must be happening inside the render report, or as a separate function decide what to do, and each work will do child functions.
     ):
 
     # --- Load Kubeconfig ---
@@ -245,7 +268,7 @@ def main(
         misconf_auditor.sort_by_column(sort)
 
         # --- Print table report ---
-        misconf_auditor.render_report()
+        misconf_auditor.render_report(format)
     except ValueError as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
