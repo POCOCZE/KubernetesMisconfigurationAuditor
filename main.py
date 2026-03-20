@@ -31,7 +31,6 @@ class KubernetesMisconfigurationAuditor:
     Tool to automatically find resources that are misconfigured.
     Output is in form of table.
     """
-    # findings: list = field(default_factory=list)
     findings: list[Findings] = field(default_factory=list)
     table: Table = field(default_factory=Table)
 
@@ -207,44 +206,52 @@ class KubernetesMisconfigurationAuditor:
         self.findings = sorted_findings
 
     def render_report(self, format):
+        """
+        Based on format parameter gathered data, render happens.
+        """
         if not self.findings:
             raise ValueError("Table is empty.")
 
-        if format.lower() == 'json':
-            self.render_json_report()
-            return
-        elif format.lower() == 'yaml':
-            self.render_yaml_report()
-            return
+        if not format:
+            self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
 
-        self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
+            if not TABLE_COLUMNS:
+                logger.error("Table of columns is blank!")
+                sys.exit(1)
 
-        if not TABLE_COLUMNS:
-            logger.error("Table of columns is blank!")
-            sys.exit(1)
-
-        for column in TABLE_COLUMNS:
-            self.table.add_column(column)
+            for column in TABLE_COLUMNS:
+                self.table.add_column(column)
 
         for finding in self.findings:
-            if finding.severity == 'critical':
-                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="red")
-            elif finding.severity == 'high':
-                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="dark_orange")
+            if format.lower() == 'json':
+                self.render_json_report(finding)
+            elif format.lower() == 'yaml':
+                self.render_yaml_report(finding)
             else:
-                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
+                self.render_table_report(finding)
 
-        console.print(self.table)
+        if not format:
+            console.print(self.table)
 
-    def render_json_report(self):
-        for finding in self.findings:
-            output = json.dumps(asdict(finding))
-            console.print(output)
+    def render_table_report(self, finding):
+        """
+        Table report is rendered when no format parameter is defined.
+        Inizialization (e.g. setting header, adding columns) of the table happens first, then rows are added, last thing is to render whole table.
+        """
+        if finding.severity == 'critical':
+            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="red")
+        elif finding.severity == 'high':
+            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="dark_orange")
+        else:
+            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
 
-    def render_yaml_report(self):
-        for finding in self.findings:
-            output = yaml.dump(asdict(finding))
-            console.print(output)
+    def render_json_report(self, finding):
+        output = json.dumps(asdict(finding))
+        console.print(output)
+
+    def render_yaml_report(self, finding):
+        output = yaml.dump(asdict(finding))
+        console.print(output)
 
 # --- Create instances ---
 console = Console()
