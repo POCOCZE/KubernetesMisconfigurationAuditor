@@ -21,6 +21,9 @@ CLI tool that connects to Kubernetes cluster and audits workloads for common mis
 | `kubernetes` | Connect to cluster, list pods, read specs |
 | `rich` | Beautiful table output in terminal |
 | `dataclass` | Bundle variables together in a class |
+| `datetime` | Show time in JSON and YAML formated outputs |
+| `json` | Formats data as JSON |
+| `yaml` | Formats data as YAML |
 
 ## Prerequisites
 
@@ -74,9 +77,9 @@ Raw output of `findings` variable in `KubernetesMisconfigurationAuditor` class:
 
 ```py
 [
-    Findings(namespace='n8n', name='n8n-test-65b6888646-bxpfq', container='n8n', issue='container runs as root', severity='critical'),
-    Findings(namespace='n8n', name='n8n-test-65b6888646-bxpfq', container='n8n', issue='no resources defined', severity='high'),
-    Findings(namespace='n8n', name='cnpg-n8n-db-1', container='postgres', issue='limits undefined', severity='low')
+    Findings(time='2026-03-20T22:36:50.407264', namespace='n8n', name='cnpg-n8n-db-1', container='postgres', issue='limits undefined', severity='low'),
+    Findings(time='2026-03-20T22:36:50.407283', namespace='n8n', name='n8n-test-65b6888646-vvtxp', container='n8n', issue='no resources defined', severity='high'),
+    Findings(time='2026-03-20T22:36:50.407283', namespace='n8n', name='n8n-test-65b6888646-vvtxp', container='n8n', issue='container runs as root', severity='critical')
 ]
 ```
 

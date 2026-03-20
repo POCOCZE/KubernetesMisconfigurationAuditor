@@ -34,28 +34,56 @@ class KubernetesMisconfigurationAuditor:
     findings: list[Findings] = field(default_factory=list)
     table: Table = field(default_factory=Table)
 
-    def load_kubeconfig(self):
-        """Load Kubeconfig"""
-        try:
-            option = self.choose_cluster()
-        except config.ConfigException as e:
-            logger.error(f"Error: {e}")
-            sys.exit(1)
-
-        config.load_kube_config(context=option)
-
-    def choose_cluster(self):
-        """Pick Kubernetes cluster"""
+    def get_context_names(self):
+        """
+        Gather context names from Kubeconfig.
+        Return list of context names, and current active context
+        """
         contexts, active_context = config.list_kube_config_contexts()
         if not contexts:
             raise config.ConfigException("Failed to load contexts")
 
         context_names = [context['name'] for context in contexts]
-        active_context_name = context_names.index(active_context['name'])
+        active_context_name = active_context['name']
+        active_context_index = context_names.index(active_context['name'])
 
-        option, _ = pick(context_names, "Pick Kubernetes context to load", default_index=active_context_name)
+        return context_names, active_context_name, active_context_index
 
-        return option
+    def list_contexts(self, list_contexts, context, context_names):
+        """
+        List all context names from Kubeconfig.
+        """
+        if list_contexts and context:
+            raise ValueError("Can't list contexts and print data for certain context at the same time! Choose only one of those parameters.")
+            sys.exit(1)
+        if list_contexts:
+            console.print("[bold]Available context names[/bold]:")
+            for context in context_names:
+                print(f"  {context}")
+
+            # Gracefully quit the program
+            sys.exit(0)
+
+    def select_context(self, context, it, format, context_names, active_context_name, active_context_index):
+        """
+        Select Kubernetes context. If `context` user-defined as part of CLI parameter, then Kubeconfig is loaded.
+        Otherwise interactive contexts window selector is shown to user to choose from.
+        """
+        if context and context not in context_names:
+            raise ValueError(f"Context name '{context}' not in list of contexts.")
+            sys.exit(1)
+        # if --context and --it options are defined - print error
+        elif context and it:
+            raise ValueError("You cannot explicitely define context and interactive selection of context!")
+            sys.exit(1)
+        elif not context and not format and it:
+            # context = misconf_auditor.pick_context(context_names, active_context_name)
+            context, _ = pick(context_names, "Pick Kubernetes context to load", default_index=active_context_index)
+        else:
+            # If interactive mode is disabled (default), no cluster is selected explicitely, use active context name
+            context = active_context_name
+        
+        return context
 
     def get_all_namespaces(self, v1):
         """
@@ -257,8 +285,6 @@ class KubernetesMisconfigurationAuditor:
 console = Console()
 logger = logging.getLogger(__name__)
 app = typer.Typer()
-
-# --- Create instance of dataclass ---
 misconf_auditor = KubernetesMisconfigurationAuditor()
 
 @app.command()
@@ -266,11 +292,23 @@ def main(
     namespace: Annotated[str, typer.Option(help="Namespace to print (Default: all non-system namespaces) | `all` to print all namespaces")] = "",
     severity: Annotated[str, typer.Option(help="Severity level to filter (Default: no filtering)")] = "",
     sort: Annotated[str, typer.Option(help="Column to sort alphabetically, `severity` column is sorted by severity (Default: namespace)")] = "",
-    format: Annotated[str, typer.Option(help="Change output style to JSON or YAML (Default: table)")] = ""
+    format: Annotated[str, typer.Option(help="Change output style to JSON or YAML (Default: table)")] = "",
+    context: Annotated[str, typer.Option(help="Select a context name explicitely without interactive window")] = "",
+    list_contexts: bool = typer.Option(False, help="List all context names"),
+    it: bool = typer.Option(False, help="Enable interactive context selection - pick (Default: False)")
     ):
 
-    # --- Load Kubeconfig ---
-    misconf_auditor.load_kubeconfig()
+    try:
+        # --- List contexts and select one ---
+        context_names, active_context_name, active_context_index = misconf_auditor.get_context_names()
+        misconf_auditor.list_contexts(list_contexts, context, context_names)
+        context = misconf_auditor.select_context(context, it, format,  context_names, active_context_name, active_context_index)
+
+        # --- Load Kubeconfig ---
+        config.load_kube_config(context=context)
+    except (config.ConfigException, ValueError) as e:
+        logger.error(f"Error: {e}")
+        sys.exit(1)
 
     # Create API client AFTER loading kubeconfig (authentication and address)
     v1 = client.CoreV1Api()

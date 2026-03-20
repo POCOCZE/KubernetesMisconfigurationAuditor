@@ -3,27 +3,6 @@ revision = 3
 requires-python = ">=3.13"
 
 [[package]]
-name = "kubernetes-misconfiguration-auditor"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "kubernetes" },
-    { name = "logging" },
-    { name = "pick" },
-    { name = "rich" },
-    { name = "typer" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "kubernetes", specifier = ">=35.0.0" },
-    { name = "logging", specifier = ">=0.4.9.6" },
-    { name = "pick", specifier = ">=2.6.0" },
-    { name = "rich", specifier = ">=14.3.3" },
-    { name = "typer", specifier = ">=0.24.1" },
-]
-
-[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -155,6 +134,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2c/8f/85bf51ad4150f64e8c665daf0d9dfe9787ae92005efb9a4d1cba592bd79d/kubernetes-35.0.0.tar.gz", hash = "sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee", size = 1094642, upload-time = "2026-01-16T01:05:27.76Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/70/05b685ea2dffcb2adbf3cdcea5d8865b7bc66f67249084cf845012a0ff13/kubernetes-35.0.0-py2.py3-none-any.whl", hash = "sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d", size = 2017602, upload-time = "2026-01-16T01:05:25.991Z" },
+]
+
+[[package]]
+name = "kubernetes-misconfiguration-auditor"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "kubernetes" },
+    { name = "logging" },
+    { name = "pick" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kubernetes", specifier = ">=35.0.0" },
+    { name = "logging", specifier = ">=0.4.9.6" },
+    { name = "pick", specifier = ">=2.6.0" },
+    { name = "rich", specifier = ">=14.3.3" },
+    { name = "typer", specifier = ">=0.24.1" },
 ]
 
 [[package]]
