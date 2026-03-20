@@ -4,6 +4,7 @@ from pick import pick
 import sys
 import logging
 import json
+import yaml
 from datetime import datetime
 from kubernetes import client, config
 from dataclasses import dataclass, field, asdict
@@ -17,7 +18,7 @@ TABLE_NAME_OVERRIDE = "Kubernetes Cluster Misconfiguration Auditor"
 
 @dataclass
 class Findings:
-    # Todo: add time here to print nice JSON format
+    time: str
     namespace: str
     name: str
     container: str
@@ -80,15 +81,16 @@ class KubernetesMisconfigurationAuditor:
 
         for container in pod.spec.containers:
             container_report = []
-            container_report.append(self.check_resources(container))
+            time = datetime.now().isoformat()
 
+            container_report.append(self.check_resources(container))
             container_report.append(self.check_security_context(container))
             container_report.append(self.check_probes(container))
             container_report.append(self.check_image_tag(container))
 
             for report in container_report:
                 if report:
-                    self.findings.append(Findings(namespace=namespace, name=name, container=container.name, issue=report['issue'], severity=report['severity']))
+                    self.findings.append(Findings(time=time, namespace=namespace, name=name, container=container.name, issue=report['issue'], severity=report['severity']))
                 else:
                     continue
 
@@ -211,6 +213,9 @@ class KubernetesMisconfigurationAuditor:
         if format.lower() == 'json':
             self.render_json_report()
             return
+        elif format.lower() == 'yaml':
+            self.render_yaml_report()
+            return
 
         self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
 
@@ -232,11 +237,14 @@ class KubernetesMisconfigurationAuditor:
         console.print(self.table)
 
     def render_json_report(self):
-        # Todo: add timestamp to each finding before printing JSON - this will be JSON only.
-        time = datetime.now().isoformat()
         for finding in self.findings:
-            json_output = json.dumps(asdict(finding))
-            console.print(json_output)
+            output = json.dumps(asdict(finding))
+            console.print(output)
+
+    def render_yaml_report(self):
+        for finding in self.findings:
+            output = yaml.dump(asdict(finding))
+            console.print(output)
 
 # --- Create instances ---
 console = Console()
@@ -251,8 +259,7 @@ def main(
     namespace: Annotated[str, typer.Option(help="Namespace to print (Default: all non-system namespaces) | `all` to print all namespaces")] = "",
     severity: Annotated[str, typer.Option(help="Severity level to filter (Default: no filtering)")] = "",
     sort: Annotated[str, typer.Option(help="Column to sort alphabetically, `severity` column is sorted by severity (Default: namespace)")] = "",
-    format: Annotated[str, typer.Option(help="Change output style to JSON (Default: table)")] = ""
-    # Todo: add option for --format json to print output as json instead of table - this would mean that the rendering logic must be happening inside the render report, or as a separate function decide what to do, and each work will do child functions.
+    format: Annotated[str, typer.Option(help="Change output style to JSON or YAML (Default: table)")] = ""
     ):
 
     # --- Load Kubeconfig ---
