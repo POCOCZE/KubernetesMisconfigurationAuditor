@@ -40,7 +40,7 @@ git clone https://github.com/POCOCZE/KubernetesMisconfigurationAuditor.git
 cd KubernetesMisconfigurationAuditor
 ```
 
-2. Create venv
+2. Create venv and install packages
 
 ```bash
 # with uv (recommended for this project)
@@ -52,7 +52,7 @@ source .venv/bin/activate  # on Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Install packages
+3. Run the tool
 
 ```bash
 # with uv
