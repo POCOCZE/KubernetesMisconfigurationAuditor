@@ -55,7 +55,6 @@ class KubernetesMisconfigurationAuditor:
         """
         if list_contexts and context:
             raise ValueError("Can't list contexts and print data for certain context at the same time! Choose only one of those parameters.")
-            sys.exit(1)
         if list_contexts:
             console.print("[bold]Available context names[/bold]:")
             for context in context_names:
@@ -64,20 +63,14 @@ class KubernetesMisconfigurationAuditor:
             # Gracefully quit the program
             sys.exit(0)
 
-    def select_context(self, context, it, format, context_names, active_context_name, active_context_index):
+    def select_context(self, context, context_names, active_context_name, active_context_index):
         """
-        Select Kubernetes context. If `context` user-defined as part of CLI parameter, then Kubeconfig is loaded.
+        Select Kubernetes context. If `context` is defined, then Kubeconfig is loaded.
         Otherwise interactive contexts window selector is shown to user to choose from.
         """
         if context and context not in context_names:
             raise ValueError(f"Context name '{context}' not in list of contexts.")
-            sys.exit(1)
-        # if --context and --it options are defined - print error
-        elif context and it:
-            raise ValueError("You cannot explicitely define context and interactive selection of context!")
-            sys.exit(1)
-        elif not context and not format and it:
-            # context = misconf_auditor.pick_context(context_names, active_context_name)
+        elif not context:
             context, _ = pick(context_names, "Pick Kubernetes context to load", default_index=active_context_index)
         else:
             # If interactive mode is disabled (default), no cluster is selected explicitely, use active context name
@@ -136,7 +129,6 @@ class KubernetesMisconfigurationAuditor:
     def check_security_context(self, container):
         """Checks for security context and whther container is running as root"""
         security_context = container.security_context
-        # Will be overwritten, assumin worst case scenario
         run_as_non_root: bool = False
 
         if security_context:
@@ -151,11 +143,11 @@ class KubernetesMisconfigurationAuditor:
         elif not container.readiness_probe:
             return {"issue": "readiness probe undefined", "severity": "medium"}
         elif not container.liveness_probe:
-            return {"issue": "linebess probe undefined", "severity": "medium"}
+            return {"issue": "liveness probe undefined", "severity": "medium"}
 
     def check_image_tag(self, container):
         """Search for `latest` image tag"""
-        # Image name format: registry.exaple.com:5000/myapp:v1.2
+        # Image name output: registry.exaple.com:5000/myapp:v1.2
         image_name_split = container.image.split(":")
 
         # Image does not have to explicitely have tag - image: nginx
@@ -233,53 +225,70 @@ class KubernetesMisconfigurationAuditor:
 
         self.findings = sorted_findings
 
-    def render_report(self, format):
+    def render_report(self, output):
         """
-        Based on format parameter gathered data, render happens.
+        Render output based on format.
         """
         if not self.findings:
             raise ValueError("Table is empty.")
 
-        if not format:
-            self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
+        # --- Render Table (default) ---
+        try:
+            if not output:
+                self.render_table_report()
+                console.print(self.table)
+        except ValueError as e:
+            logger.error(f"Error: {e}")
+            sys.exit(1)        
 
-            if not TABLE_COLUMNS:
-                logger.error("Table of columns is blank!")
-                sys.exit(1)
+        # --- Render JSON or YAML array ---
+        if output.lower() == 'json':
+            json_report = self.render_json_report()
+            console.print(json_report)
+        elif output.lower() == 'yaml':
+            yaml_report = self.render_yaml_report()
+            console.print(yaml_report)
 
-            for column in TABLE_COLUMNS:
-                self.table.add_column(column)
+    def render_table_report(self):
+        """
+        Table report is rendered by default.
+        Inizialization (e.g. setting header, adding columns) of the table happens first, then rows are added, rendering happens outside.
+        """
+        self.table: Table = Table(title=TABLE_NAME_OVERRIDE)
+
+        if not TABLE_COLUMNS:
+            raise ValueError("Table of columns is blank!")
+
+        for column in TABLE_COLUMNS:
+            self.table.add_column(column)
 
         for finding in self.findings:
-            if format.lower() == 'json':
-                self.render_json_report(finding)
-            elif format.lower() == 'yaml':
-                self.render_yaml_report(finding)
+            if finding.severity == 'critical':
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="red")
+            elif finding.severity == 'high':
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="dark_orange")
             else:
-                self.render_table_report(finding)
+                self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
 
-        if not format:
-            console.print(self.table)
-
-    def render_table_report(self, finding):
+    def render_json_report(self):
         """
-        Table report is rendered when no format parameter is defined.
-        Inizialization (e.g. setting header, adding columns) of the table happens first, then rows are added, last thing is to render whole table.
+        Uses list comprehension to convert list of dataclass instances. 
+        Then list is converted to a valid JSON. Returns the JSON array to print.
         """
-        if finding.severity == 'critical':
-            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="red")
-        elif finding.severity == 'high':
-            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity, style="dark_orange")
-        else:
-            self.table.add_row(finding.namespace, finding.name, finding.container, finding.issue, finding.severity)
+        findings_list = [asdict(finding) for finding in self.findings]
+        json_report = json.dumps(findings_list)
 
-    def render_json_report(self, finding):
-        output = json.dumps(asdict(finding))
-        console.print(output)
+        return json_report
 
-    def render_yaml_report(self, finding):
-        output = yaml.dump(asdict(finding))
-        console.print(output)
+    def render_yaml_report(self):
+        """
+        Uses list comprehension to convert list of dataclass instances. 
+        Then list is converted to a valid YAML. Returns the YAML array to print.
+        """
+        findings_list = [asdict(finding) for finding in self.findings]
+        yaml_report = yaml.dump(findings_list)
+
+        return yaml_report
 
 # --- Create instances ---
 console = Console()
@@ -292,23 +301,31 @@ def main(
     namespace: Annotated[str, typer.Option(help="Namespace to print (Default: all non-system namespaces) | `all` to print all namespaces")] = "",
     severity: Annotated[str, typer.Option(help="Severity level to filter (Default: no filtering)")] = "",
     sort: Annotated[str, typer.Option(help="Column to sort alphabetically, `severity` column is sorted by severity (Default: namespace)")] = "",
-    format: Annotated[str, typer.Option(help="Change output style to JSON or YAML (Default: table)")] = "",
+    output: Annotated[str, typer.Option(help="Change output style to JSON or YAML (Default: table)")] = "",
     context: Annotated[str, typer.Option(help="Select a context name explicitely without interactive window")] = "",
     list_contexts: bool = typer.Option(False, help="List all context names"),
     it: bool = typer.Option(False, help="Enable interactive context selection - pick (Default: False)")
     ):
 
+    # --- Error when --context and --it defined ---
+    try:
+        if context and it:
+            raise ValueError("You cannot explicitely define context and interactive selection of context!")
+    except ValueError as e:
+        logger.error(f"Error: {e}")
+        sys.exit(1)
+
     try:
         # --- List contexts and select one ---
         context_names, active_context_name, active_context_index = misconf_auditor.get_context_names()
         misconf_auditor.list_contexts(list_contexts, context, context_names)
-        context = misconf_auditor.select_context(context, it, format,  context_names, active_context_name, active_context_index)
-
-        # --- Load Kubeconfig ---
-        config.load_kube_config(context=context)
+        context = misconf_auditor.select_context(context, context_names, active_context_name, active_context_index)
     except (config.ConfigException, ValueError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
+
+    # --- Load Kubeconfig ---
+    config.load_kube_config(context=context)
 
     # Create API client AFTER loading kubeconfig (authentication and address)
     v1 = client.CoreV1Api()
@@ -320,7 +337,7 @@ def main(
         misconf_auditor.sort_by_column(sort)
 
         # --- Print table report ---
-        misconf_auditor.render_report(format)
+        misconf_auditor.render_report(output)
     except ValueError as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
