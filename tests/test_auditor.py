@@ -47,8 +47,6 @@ class Container():
     ("registry.gitlab.com:443/myapp", {"issue": "no image tag (default: latest)", "severity": "high"})
 ])
 
-# images to test
-
 def test_image_tag(auditor, image, expected):
     # auditor = KubernetesMisconfigurationAuditor()
     container = MagicMock()
