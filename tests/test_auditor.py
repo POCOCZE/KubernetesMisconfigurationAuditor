@@ -3,6 +3,10 @@ from unittest.mock import MagicMock
 from main import KubernetesMisconfigurationAuditor
 import pytest
 
+@pytest.fixture
+def auditor():
+    return KubernetesMisconfigurationAuditor()
+
 @dataclass
 class CpuMemory:
     cpu: str = field(default_factory=str)
@@ -38,10 +42,15 @@ class Container():
     ("nginx:latest", {"issue": "latest image tag", "severity": "high"}),
     ("nginx", {"issue": "no image tag (default: latest)", "severity": "high"}),
     ("nginx:1.26", None),
+    ("registry.gitlab.com:443/myapp:latest", {"issue": "latest image tag", "severity": "high"}),
+    ("registry.gitlab.com:443/myapp:v1.0", None),
+    ("registry.gitlab.com:443/myapp", {"issue": "no image tag (default: latest)", "severity": "high"})
 ])
 
-def test_image_tag(image, expected):
-    auditor = KubernetesMisconfigurationAuditor()
+# images to test
+
+def test_image_tag(auditor, image, expected):
+    # auditor = KubernetesMisconfigurationAuditor()
     container = MagicMock()
     container.image = image
 
@@ -49,8 +58,7 @@ def test_image_tag(image, expected):
 
     assert result == expected
 
-def test_resources():
-    auditor = KubernetesMisconfigurationAuditor()
+def test_resources(auditor):
     container = MagicMock()
     container.resources.requests = None
     container.resources.limits = None
@@ -61,8 +69,7 @@ def test_resources():
 
     assert result == {"issue": "no resources defined", "severity": "high"}
 
-def test_resources_requests():
-    auditor = KubernetesMisconfigurationAuditor()
+def test_resources_requests(auditor):
     container = MagicMock()
     container.resources.requests = None
     
@@ -70,8 +77,7 @@ def test_resources_requests():
 
     assert result == {"issue": "requests undefined", "severity": "medium"}
 
-def test_resources_limits():
-    auditor = KubernetesMisconfigurationAuditor()
+def test_resources_limits(auditor):
     container = MagicMock()
     container.resources.limits = None
     
@@ -79,11 +85,10 @@ def test_resources_limits():
 
     assert result == {"issue": "limits undefined", "severity": "low"}
 
-def test_resources_defined():
+def test_resources_defined(auditor):
     """
     Input have requests and limits defined.
     """
-    auditor = KubernetesMisconfigurationAuditor()
 
     # This mock method works
     # container = MagicMock()
@@ -119,22 +124,20 @@ def test_resources_defined():
 
     assert result is None
 
-def test_security_context_is_none():
+def test_security_context_is_none(auditor):
     """
     Input security_context is None
     """
-    auditor = KubernetesMisconfigurationAuditor()
     security_context = Container(security_context=None)
 
     result = auditor.check_security_context(security_context)
 
     assert result == {"issue": "container runs as root", "severity": "critical"}
 
-def test_security_context_run_root():
+def test_security_context_run_root(auditor):
     """
     Input security_context: run_as_non_root set to False
     """
-    auditor = KubernetesMisconfigurationAuditor()
     run_as_non_root = SecurityContext(run_as_non_root=False)
     security_context = Container(security_context=run_as_non_root)
 
@@ -142,11 +145,10 @@ def test_security_context_run_root():
 
     assert result == {"issue": "container runs as root", "severity": "critical"}
 
-def test_security_context_run_non_root():
+def test_security_context_run_non_root(auditor):
     """
     Input security_context: run_as_non_root set to True
     """
-    auditor = KubernetesMisconfigurationAuditor()
     run_as_non_root = SecurityContext(run_as_non_root=True)
     security_context = Container(security_context=run_as_non_root)
 
@@ -154,11 +156,10 @@ def test_security_context_run_non_root():
 
     assert result is None
 
-def test_probes_nothing():
+def test_probes_nothing(auditor):
     """
     Input no probe
     """
-    auditor = KubernetesMisconfigurationAuditor()
     liveness_probe = None
     readiness_probe = None
     probes = Container(liveness_probe=liveness_probe, readiness_probe=readiness_probe)
@@ -167,11 +168,10 @@ def test_probes_nothing():
 
     assert result == {"issue": "probes undefined", "severity": "medium"}
 
-def test_probes_liveness_only():
+def test_probes_liveness_only(auditor):
     """
     Input only liveness probe
     """
-    auditor = KubernetesMisconfigurationAuditor()
     liveness_probe = LivenessProbe(initial_delay_seconds=1)
     readiness_probe = None
     probes = Container(liveness_probe=liveness_probe, readiness_probe=readiness_probe)
@@ -180,11 +180,10 @@ def test_probes_liveness_only():
 
     assert result == {"issue": "readiness probe undefined", "severity": "medium"}
 
-def test_probes_readiness_only():
+def test_probes_readiness_only(auditor):
     """
     Input only readiness probe
     """
-    auditor = KubernetesMisconfigurationAuditor()
     liveness_probe = None
     readiness_probe = ReadinessProbe(initial_delay_seconds=1)
     probes = Container(liveness_probe=liveness_probe, readiness_probe=readiness_probe)
@@ -193,11 +192,10 @@ def test_probes_readiness_only():
 
     assert result == {"issue": "liveness probe undefined", "severity": "medium"}
 
-def test_probes_both():
+def test_probes_both(auditor):
     """
     Input both probes
     """
-    auditor = KubernetesMisconfigurationAuditor()
     liveness_probe = LivenessProbe(initial_delay_seconds=1)
     readiness_probe = ReadinessProbe(initial_delay_seconds=1)
     probes = Container(liveness_probe=liveness_probe, readiness_probe=readiness_probe)

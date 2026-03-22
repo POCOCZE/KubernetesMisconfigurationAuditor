@@ -147,13 +147,12 @@ class KubernetesMisconfigurationAuditor:
 
     def check_image_tag(self, container):
         """Search for `latest` image tag"""
-        # Image name output: registry.exaple.com:5000/myapp:v1.2
-        image_name_split = container.image.split(":")
+        image_tag = container.image.split("/")[-1].split(":")
 
-        # Image does not have to explicitely have tag - image: nginx
-        if len(image_name_split) == 1:
+        # Image is missing explicit `latest` tag
+        if len(image_tag) == 1:
             return {"issue": "no image tag (default: latest)", "severity": "high"}
-        elif image_name_split[-1] == 'latest':
+        elif image_tag[-1] == 'latest':
             return {"issue": "latest image tag", "severity": "high"}
 
     def namespace_selector(self, v1, namespace):
