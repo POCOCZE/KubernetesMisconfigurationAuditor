@@ -31,9 +31,12 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+tests/__pycache__
+__pycache__
 
 # Operating system
 .DS_Store
 
 # VScode
 .vscode/
+.ruff_cache
